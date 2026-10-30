@@ -27,8 +27,6 @@ Step-by-step instructions to rebuild the project, run it as a whole, and test ev
 - [5. Code documentation (Doxygen)](#5-code-documentation-doxygen)
 - [6. Clean up](#6-clean-up)
 
----
-
 ## 0. Prerequisites
 
 The project's own requirements are checked and installed by `scripts/setup_env.sh` (also run by `scripts/run_all.sh` before every build). For the checks in this guide, install everything including the optional parts, plus the tools the checks use:
@@ -179,7 +177,9 @@ Then open **http://localhost:8080**.
 - The terminal first shows `==> build environment (package manager: …)` with the package table and `==> all required packages are installed` (missing packages are installed at this point).
 
 - It then shows `==> building C++ components`, `==> building frontend` on the first run, `==> sensors found` with a table, then `sampling N sensor(s): cpu_temp=… fan=… battery=… every 500 ms` (13 with `--fake`: 10 cores, 2 fans, 1 battery; on real hardware the counts depend on the machine) and `==> dashboard: http://localhost:8080`.
+
 - `curl -s localhost:8080/api/health` returns `"status":"ok"` and `"source":"local"`.
+
 - The dashboard shows a green **live** marker and values change twice per second; the checklist in [4.15](#415-dashboard-ui) passes.
 
 Stop with **Ctrl+C** (buffered readings are written before exit). If `run_all.sh` says "Permission denied", run `chmod +x scripts/*.sh` or use `bash scripts/run_all.sh`.
@@ -192,8 +192,6 @@ SETUP_OPTS=--with-docs scripts/run_all.sh --fake   # the check also covers Doxyg
 ```
 
 **Expected:** with `SKIP_SETUP=1` the output starts directly with `==> building C++ components`; with `SETUP_OPTS=--with-docs` the Doxygen and Graphviz rows show `ok` instead of `ok (optional)` (and are installed if missing). If a required package cannot be installed (for example a Node.js older than 18 from the distribution), `run_all.sh` stops with `==> environment setup failed: fix the packages listed above, or run with SKIP_SETUP=1`.
-
----
 
 ## 4. Each feature on its own
 
@@ -689,8 +687,6 @@ Before starting the load, create an alarm `max > 80` for "Every core" with a 1-m
 
 **Expected:** all core lines climb within seconds, alarms on the hot cores switch to `firing` and log events, and they clear about 1 minute after the load stops.
 
----
-
 ## 5. Code documentation (Doxygen)
 
 Every source file carries Doxygen comments; the `Doxyfile` at the project root generates HTML documentation from them.
@@ -718,7 +714,7 @@ cat docs/doxygen-warnings.log
 
 **Expected:** the same single README line, no warnings for `src/`, `tests/` or `frontend/src/`.
 
----
+
 
 ## 6. Clean up
 

@@ -2,26 +2,24 @@
 
 An end-to-end system that discovers the **hardware sensors of the Linux machine it runs on** and monitors them live. Three sensor families are built in:
 
-| Family | What is measured | Source | Unit |
-|---|---|---|---|
-| **CPU temperatures** | One sensor per physical core (the package sensor is deliberately ignored); per die or whole CPU on CPUs without per-core sensors | hwmon `coretemp` / `k10temp` / `zenpower`, thermal zones as fallback | °C |
-| **Fans** | Every fan the firmware exposes | hwmon `fan<N>_input` (any driver) | RPM |
-| **Batteries** | Charge level of every system battery | `/sys/class/power_supply` | % |
+| Family               | What is measured                                                                                                                 | Source                                                               | Unit |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ---- |
+| **CPU temperatures** | One sensor per physical core (the package sensor is deliberately ignored); per die or whole CPU on CPUs without per-core sensors | hwmon `coretemp` / `k10temp` / `zenpower`, thermal zones as fallback | °C   |
+| **Fans**             | Every fan the firmware exposes                                                                                                   | hwmon `fan<N>_input` (any driver)                                    | RPM  |
+| **Batteries**        | Charge level of every system battery                                                                                             | `/sys/class/power_supply`                                            | %    |
 
 All sensors are sampled **every 500 ms**, stored in SQLite, served through a C++ HTTP API and a live event stream, and visualised in a React dashboard with one tab per sensor family. Every sensor, whatever its family, can carry its **own independent statistical alarms** (`avg | max | min | stddev` over the last *X* minutes, `> Y` or `< Y`): for example a hot core (`avg > 75 °C`), a racing fan (`max > 4500 RPM`) or a battery running low (`min < 20 %`).
 
-| Part | Status | Implementation |
-|---|---|---|
-| 1. Read hardware sensors | Done | C++17, Linux sysfs: CPU core temperatures (auto-discovers N cores), fan speeds and battery charge, as pluggable providers; one sampling thread per sensor family |
-| 2. Persistent store | Done | SQLite (WAL), batched writer thread, 10 s rollups, retention |
-| 3. Backend API + dashboard | Done | C++ `cpp-httplib` + `nlohmann/json`, Server-Sent Events; React 18 + Recharts 3 (Vite 5 build) |
-| 4. Alarm engine (bonus) | Done ("extended" scope) | Per-sensor alarms on in-memory sliding windows, CRUD API, state + firing history, UI |
+| Part                       | Status                  | Implementation                                                                                                                                                   |
+| -------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Read hardware sensors   | Done                    | C++17, Linux sysfs: CPU core temperatures (auto-discovers N cores), fan speeds and battery charge, as pluggable providers; one sampling thread per sensor family |
+| 2. Persistent store        | Done                    | SQLite (WAL), batched writer thread, 10 s rollups, retention                                                                                                     |
+| 3. Backend API + dashboard | Done                    | C++ `cpp-httplib` + `nlohmann/json`, Server-Sent Events; React 18 + Recharts 3 (Vite 5 build)                                                                    |
+| 4. Alarm engine (bonus)    | Done ("extended" scope) | Per-sensor alarms on in-memory sliding windows, CRUD API, state + firing history, UI                                                                             |
 
 Internally every part is connected through a **multi-threaded publish/subscribe bus with MQTT-style topics**. Sampling, storage, alarms, live dashboards and an optional bridge to a real **MQTT broker** each run on their own thread with their own queue, so none of them can slow down another (see [Architecture](#3-architecture) and [Performance](#4-performance)).
 
 The sensor layer is a set of pluggable **providers**, one per family: `cpu_temp`, `fan` and `battery`. `scripts/run_all.sh` enables all of them by default; the `sensor-server` and `sensor-poller` binaries default to `cpu_temp` and take `--providers` (for example `--providers all` or `--providers cpu_temp,fan`). Nothing above the sensor layer is specific to a family: the database, API, alarms, MQTT bridge and dashboard work with generic sensors (key, label, category, unit), so a new family (GPU temperature, voltages, disk temperatures, ...) is one class plus one registration line (see [Adding a new sensor type](#adding-a-new-sensor-type)).
-
----
 
 ## 1. Quick start
 
@@ -118,39 +116,37 @@ The site has this README as its main page, `Project-Overview.md` and `TESTING.md
 
 Sampling, storage and MQTT flags are the same for `sensor-server` and `sensor-poller`.
 
-| Binary | Flag | Default | Notes |
-|---|---|---|---|
-| both | `--interval-ms N` (or `--interval S`) | `500` | Sampling period (env `POLL_INTERVAL_MS`); minimum 50 |
-| both | `--db PATH` | `data/sensors.db` | env `SENSOR_DB` |
-| both | `--providers a,b` | `cpu_temp` | Sensor families: `cpu_temp`, `fan`, `battery` or `all` (env `SENSOR_PROVIDERS`) |
-| both | `--hwmon-root` / `--power-supply-root` / `--thermal-root` | `/sys/class/...` | Point at a simulated tree (env `HWMON_ROOT`, ...) |
-| both | `--chips a,b` | `coretemp,k10temp,zenpower` | hwmon drivers treated as CPU sensors |
-| both | `--rediscover S` | `60` | Re-run discovery this often (hardware that appears later); `0` = never |
-| both | `--flush-ms N` | `1000` | The DB writer commits buffered readings this often |
-| both | `--raw-retention-hours N` | `24` | Raw 500 ms readings kept this long (`0` = forever) |
-| both | `--retention-days N` | `7` | 10 s rollups kept this long (`0` = forever) |
-| both | `--mqtt HOST[:PORT]` | off | Publish to an MQTT broker (env `MQTT_URL`); also `--mqtt-prefix`, `--mqtt-user`, `--mqtt-password` |
-| server | `--port N` / `--host` | `8080` / `0.0.0.0` | env `PORT` |
-| server | `--static DIR` | `frontend/dist` | Built dashboard |
-| server | `--source auto\|local\|db` | `auto` | Sample here, or follow a DB another process samples into (see [Process model](#process-model)) |
-| server | `--alarm-interval S` | `1` | Alarm evaluation period |
-| server | `--alarm-min-samples N` | `3` | Samples needed in a window before an alarm can fire |
-| server | `--max-live-clients N` | `32` | Concurrent live dashboard streams |
-| poller | `--list` / `--list-providers` / `--verbose` | | Print sensors / providers / log every sample |
-| build | `-DSD_REPORT_SENSORS=OFF` | `ON` | Skip the post-build sensor report |
-| build | `-DSD_WITH_MQTT=ON\|OFF` | `AUTO` | Require or disable the MQTT bridge (default: enabled if libmosquitto is found) |
-
----
+| Binary | Flag                                                      | Default                     | Notes                                                                                              |
+| ------ | --------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------- |
+| both   | `--interval-ms N` (or `--interval S`)                     | `500`                       | Sampling period (env `POLL_INTERVAL_MS`); minimum 50                                               |
+| both   | `--db PATH`                                               | `data/sensors.db`           | env `SENSOR_DB`                                                                                    |
+| both   | `--providers a,b`                                         | `cpu_temp`                  | Sensor families: `cpu_temp`, `fan`, `battery` or `all` (env `SENSOR_PROVIDERS`)                    |
+| both   | `--hwmon-root` / `--power-supply-root` / `--thermal-root` | `/sys/class/...`            | Point at a simulated tree (env `HWMON_ROOT`, ...)                                                  |
+| both   | `--chips a,b`                                             | `coretemp,k10temp,zenpower` | hwmon drivers treated as CPU sensors                                                               |
+| both   | `--rediscover S`                                          | `60`                        | Re-run discovery this often (hardware that appears later); `0` = never                             |
+| both   | `--flush-ms N`                                            | `1000`                      | The DB writer commits buffered readings this often                                                 |
+| both   | `--raw-retention-hours N`                                 | `24`                        | Raw 500 ms readings kept this long (`0` = forever)                                                 |
+| both   | `--retention-days N`                                      | `7`                         | 10 s rollups kept this long (`0` = forever)                                                        |
+| both   | `--mqtt HOST[:PORT]`                                      | off                         | Publish to an MQTT broker (env `MQTT_URL`); also `--mqtt-prefix`, `--mqtt-user`, `--mqtt-password` |
+| server | `--port N` / `--host`                                     | `8080` / `0.0.0.0`          | env `PORT`                                                                                         |
+| server | `--static DIR`                                            | `frontend/dist`             | Built dashboard                                                                                    |
+| server | `--source auto\|local\|db`                                | `auto`                      | Sample here, or follow a DB another process samples into (see [Process model](#process-model))     |
+| server | `--alarm-interval S`                                      | `1`                         | Alarm evaluation period                                                                            |
+| server | `--alarm-min-samples N`                                   | `3`                         | Samples needed in a window before an alarm can fire                                                |
+| server | `--max-live-clients N`                                    | `32`                        | Concurrent live dashboard streams                                                                  |
+| poller | `--list` / `--list-providers` / `--verbose`               |                             | Print sensors / providers / log every sample                                                       |
+| build  | `-DSD_REPORT_SENSORS=OFF`                                 | `ON`                        | Skip the post-build sensor report                                                                  |
+| build  | `-DSD_WITH_MQTT=ON\|OFF`                                  | `AUTO`                      | Require or disable the MQTT bridge (default: enabled if libmosquitto is found)                     |
 
 ## 2. Sensors
 
 All built-in sensors are read from Linux **sysfs**, where every value is a small text file:
 
-| Provider (`--providers`) | Dashboard tab | Sensors found | Key (stable across reboots) | Label |
-|---|---|---|---|---|
-| `cpu_temp` | CPU temperatures | Every `Core N` channel of the CPU's hwmon driver (fallbacks below) | `coretemp/Core 4` | `Core 4` |
-| `fan` | Fans | Every `fan<N>_input` channel on any hwmon chip (thinkpad, dell_smm, asus-ec, nct6775, it87, ...); a stopped fan reads 0 RPM | `fan:thinkpad/fan1` | `Fan 1` (chip name added when fans come from several chips) |
-| `battery` | Battery | Every `power_supply` entry of type `Battery`, except peripheral batteries (mice, keyboards: scope `Device`); charge from `capacity`, or `energy_now/energy_full` / `charge_now/charge_full` | `battery:BAT0/charge` | `BAT0 charge` |
+| Provider (`--providers`) | Dashboard tab    | Sensors found                                                                                                                                                                               | Key (stable across reboots) | Label                                                       |
+| ------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------- |
+| `cpu_temp`               | CPU temperatures | Every `Core N` channel of the CPU's hwmon driver (fallbacks below)                                                                                                                          | `coretemp/Core 4`           | `Core 4`                                                    |
+| `fan`                    | Fans             | Every `fan<N>_input` channel on any hwmon chip (thinkpad, dell_smm, asus-ec, nct6775, it87, ...); a stopped fan reads 0 RPM                                                                 | `fan:thinkpad/fan1`         | `Fan 1` (chip name added when fans come from several chips) |
+| `battery`                | Battery          | Every `power_supply` entry of type `Battery`, except peripheral batteries (mice, keyboards: scope `Device`); charge from `capacity`, or `energy_now/energy_full` / `charge_now/charge_full` | `battery:BAT0/charge`       | `BAT0 charge`                                               |
 
 `./build/sensor-poller --list-providers` lists the providers and `./build/sensor-poller --list --providers all` shows what this machine exposes. Each family is sampled on its own thread, so a slow device (a battery behind an ACPI embedded controller, for example) never delays the CPU core readings.
 
@@ -161,6 +157,7 @@ All built-in sensors are read from Linux **sysfs**, where every value is a small
 **Sensor:** CPU temperature from the Linux **hwmon** subsystem, specifically the `coretemp` driver (Intel). `k10temp`/`zenpower` (AMD) are also supported.
 
 **Why it is the primary family:**
+
 - It is a real hardware sensor (digital thermal sensors on the die), not a simulated value.
 - It responds within seconds to load (e.g. `stress -c 8`), so the chart is visibly live.
 - It maps directly onto the brief's example alarm (`avg(temp, 10 min) > 75 °C`).
@@ -200,8 +197,6 @@ If no enabled provider finds anything, the poller exits with an actionable error
 Fans and batteries are discovered the same way, at start and on every rediscovery, so the same binary works on a desktop with five fans and no battery or on a laptop with one battery and no visible fans. A battery that appears later (or a fan driver loaded later) is picked up without a restart. Fan speeds are integers in RPM; battery charge is 0-100 %, computed from now/full counters when the firmware has no `capacity` file.
 
 Like CPU cores, every fan and battery is an ordinary sensor everywhere above the sensor layer: it is stored, has its own history, gets its own chart, can carry its own alarms (for example `max(Fan 1, 5 min) > 4500` RPM) and is published to MQTT.
-
----
 
 ## 3. Architecture
 
@@ -259,6 +254,7 @@ third_party/             httplib.h (MIT) · nlohmann/json.hpp (MIT); vendored so
 ```
 
 **Design patterns.**
+
 - **Publish/subscribe (Observer through a message bus):** producers publish to topics and never know who consumes them. Adding a consumer (say a CSV exporter or a webhook notifier) is one more subscriber thread, with no change to sampling, storage or alarms. Topics follow MQTT conventions, so the optional MQTT bridge maps them one-to-one onto a real broker.
 - **Strategy:** each `SensorProvider` encapsulates how one sensor family is found.
 - **Factory + Registry:** `ProviderRegistry` maps a name (`fan`) to a factory; the binaries build providers from `--providers` without knowing any concrete class.
@@ -268,17 +264,17 @@ third_party/             httplib.h (MIT) · nlohmann/json.hpp (MIT); vendored so
 
 #### Threads and topics
 
-| Thread | Subscribes to | Publishes | Notes |
-|---|---|---|---|
-| Sampler, one per provider | | `samples/<provider>` | Aligned 500 ms ticks; reads are plain `open/read/close` |
-| Sampler supervisor | | `sensors/changed` | Rediscovery every 60 s |
-| DbWriter | `samples/#` | | One transaction per second; rollups every 10 s; pruning hourly |
-| AlarmEngine | `samples/#`, `control/alarms/reload`, `sensors/changed` | `alarms/<id>/state`, `alarms/snapshot` | Evaluates every second |
-| LiveCache | `samples/#` | | Latest value per sensor, for `/api/health` and `/api/sensors` |
-| SSE stream (one per open dashboard) | `samples/#`, `alarms/+/state`, `alarms/snapshot`, `sensors/changed` | | Runs on an HTTP worker; merges providers' ticks into one event |
-| MqttBridge (optional) | `samples/#`, `alarms/+/state`, `sensors/changed` | (to broker) | libmosquitto adds its own network thread |
-| HTTP worker pool | | `control/alarms/reload` | 8 + `--max-live-clients` workers |
-| DbFollower (follow mode only) | | `samples/db` | Replaces the sampler when another process samples |
+| Thread                              | Subscribes to                                                       | Publishes                              | Notes                                                          |
+| ----------------------------------- | ------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------- |
+| Sampler, one per provider           |                                                                     | `samples/<provider>`                   | Aligned 500 ms ticks; reads are plain `open/read/close`        |
+| Sampler supervisor                  |                                                                     | `sensors/changed`                      | Rediscovery every 60 s                                         |
+| DbWriter                            | `samples/#`                                                         |                                        | One transaction per second; rollups every 10 s; pruning hourly |
+| AlarmEngine                         | `samples/#`, `control/alarms/reload`, `sensors/changed`             | `alarms/<id>/state`, `alarms/snapshot` | Evaluates every second                                         |
+| LiveCache                           | `samples/#`                                                         |                                        | Latest value per sensor, for `/api/health` and `/api/sensors`  |
+| SSE stream (one per open dashboard) | `samples/#`, `alarms/+/state`, `alarms/snapshot`, `sensors/changed` |                                        | Runs on an HTTP worker; merges providers' ticks into one event |
+| MqttBridge (optional)               | `samples/#`, `alarms/+/state`, `sensors/changed`                    | (to broker)                            | libmosquitto adds its own network thread                       |
+| HTTP worker pool                    |                                                                     | `control/alarms/reload`                | 8 + `--max-live-clients` workers                               |
+| DbFollower (follow mode only)       |                                                                     | `samples/db`                           | Replaces the sampler when another process samples              |
 
 Each subscriber has a bounded queue (64 Ki messages for storage and alarms, 512 for a browser). A full queue drops its *oldest* messages and counts them in `/api/stats`, so a stalled browser can never block sampling or storage.
 
@@ -287,6 +283,7 @@ Each subscriber has a bounded queue (64 Ki messages for storage and alarms, 512 
 Example: GPU temperature from the `amdgpu` hwmon driver.
 
 1. Create `src/sensors/providers/gpu_temp.{hpp,cpp}`:
+   
    ```cpp
    class GpuTempProvider : public SensorProvider {
    public:
@@ -307,6 +304,7 @@ Example: GPU temperature from the `amdgpu` hwmon driver.
    };
    ```
 2. Register it in `builtin_providers()` (`src/sensors/registry.cpp`):
+   
    ```cpp
    r.add("gpu_temp", "GPU temperatures (amdgpu)",
          [](const ProviderContext& c) { return std::make_unique<GpuTempProvider>(c); });
@@ -328,34 +326,33 @@ By default `sensor-server` does everything in one process. Exactly one process m
 
 With `--mqtt host[:port]` (and a build with libmosquitto) the bus is mirrored to a broker under `sensordash/<hostname>/` (change with `--mqtt-prefix`):
 
-| Topic | Payload | QoS / retained |
-|---|---|---|
-| `<prefix>/status` | `online` / `offline` (also the last will, sent by the broker if the process dies) | 1, retained |
-| `<prefix>/sensors/<slug>/meta` | `{"id","key","label","category","kind","unit"}` | 1, retained |
-| `<prefix>/<category>/<slug>` | `{"ts":1793347475500,"value":75.002,"unit":"celsius"}` every sample | 0 |
-| `<prefix>/alarms/<id>` | `{"id","sensor","condition","state","from","value","ts"}` on every transition (condition such as `min(value, last 5 min) < 20`) | 1, retained |
+| Topic                          | Payload                                                                                                                         | QoS / retained |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `<prefix>/status`              | `online` / `offline` (also the last will, sent by the broker if the process dies)                                               | 1, retained    |
+| `<prefix>/sensors/<slug>/meta` | `{"id","key","label","category","kind","unit"}`                                                                                 | 1, retained    |
+| `<prefix>/<category>/<slug>`   | `{"ts":1793347475500,"value":75.002,"unit":"celsius"}` every sample                                                             | 0              |
+| `<prefix>/alarms/<id>`         | `{"id","sensor","condition","state","from","value","ts"}` on every transition (condition such as `min(value, last 5 min) < 20`) | 1, retained    |
 
 `<slug>` is the label in lower case, for example `core_0`, `fan_1`, `bat0_charge`. Try it with `mosquitto_sub -v -t 'sensordash/#'`. The bridge reconnects by itself if the broker restarts.
-
----
 
 ## 4. Performance
 
 Measured on a simulated 13-sensor machine (10 CPU cores, 2 fans, 1 battery) with **24 hours of 500 ms history** (2.2 million readings), 13 alarms (`avg` over 10 min) and one open dashboard.
 
-| Metric | Result |
-|---|---|
-| Reading → dashboard latency | **1.5 ms median**, 2.3 ms p95 |
-| Dashboard network traffic | one 80 KB history load (gzip), then ≈ 120 KB/min of live events |
-| Requests per dashboard after load | **0** (one open stream) |
-| `/api/readings` 15 min / 6 h / 24 h (median of 5) | 35 ms / 40 ms / 0.15 s |
-| Server CPU, 60 s, 1 dashboard | **0.21 s** |
-| Server CPU, 115 s, 10 dashboards + MQTT | 0.80 s (0.7 % of one core), memory flat at 12 MB |
-| Alarm evaluation, 13 alarms | ≈ 0.2 ms for all 13 every second, from memory |
-| DB size per day of 500 ms data | **61.8 MB** (no time index; includes 10 s rollups) |
-| Dashboard bundle | 163 KB (gzip) in three files: dashboard code 7 KB, React 46 KB, charts (Recharts 3) 111 KB; each cached for a year (hashed file names), so a dashboard change only re-downloads the 7 KB file |
+| Metric                                            | Result                                                                                                                                                                                        |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reading → dashboard latency                       | **1.5 ms median**, 2.3 ms p95                                                                                                                                                                 |
+| Dashboard network traffic                         | one 80 KB history load (gzip), then ≈ 120 KB/min of live events                                                                                                                               |
+| Requests per dashboard after load                 | **0** (one open stream)                                                                                                                                                                       |
+| `/api/readings` 15 min / 6 h / 24 h (median of 5) | 35 ms / 40 ms / 0.15 s                                                                                                                                                                        |
+| Server CPU, 60 s, 1 dashboard                     | **0.21 s**                                                                                                                                                                                    |
+| Server CPU, 115 s, 10 dashboards + MQTT           | 0.80 s (0.7 % of one core), memory flat at 12 MB                                                                                                                                              |
+| Alarm evaluation, 13 alarms                       | ≈ 0.2 ms for all 13 every second, from memory                                                                                                                                                 |
+| DB size per day of 500 ms data                    | **61.8 MB** (no time index; includes 10 s rollups)                                                                                                                                            |
+| Dashboard bundle                                  | 163 KB (gzip) in three files: dashboard code 7 KB, React 46 KB, charts (Recharts 3) 111 KB; each cached for a year (hashed file names), so a dashboard change only re-downloads the 7 KB file |
 
 How this is achieved:
+
 - **Sampling** never waits on anything: each provider's thread reads its sysfs files (about 0.1 ms per tick for 10 cores) and publishes. Ticks are on absolute deadlines, so 500 ms stays 500 ms.
 - **Storage** batches about 26 readings per second into one transaction, through a single prepared statement. There is no separate time index: every query reads per sensor through the primary key. History older than 24 h lives on as 10 s rollups (count, sum, sum of squares, min, max), so long windows read about 1/20 of the rows and alarms over long windows stay exact.
 - **Alarms** keep one aggregate per second per sensor for the last hour in a ring buffer. Evaluating a 10-minute window sums 600 slots instead of querying the database. Windows longer than 60 minutes read the rollups every 10 s.
@@ -363,9 +360,6 @@ How this is achieved:
 - **HTTP**: gzip for JSON and static files (the live stream is never compressed), the dashboard is served from memory, and each thread role has its own SQLite connection, so API reads never wait for the writer (WAL).
 
 `GET /api/stats` shows the live numbers for every stage (queue depths, dropped messages, tick and flush durations, alarm evaluation time, MQTT counters).
-
-
----
 
 ## 5. Data model
 
@@ -410,21 +404,23 @@ alarm_events (
 - All sensors in a tick share one timestamp (aligned to the interval), so series line up exactly across providers and in the dashboard.
 - Volume at 500 ms: 13 sensors ≈ 2.2 M rows/day ≈ 62 MB/day raw. With the defaults (24 h raw, 7 days of rollups) the file levels off at about 100 MB; rollups alone cost about 3.5 MB per sensor per week.
 
----
-
 ## 6. API
 
 All timestamps are Unix epoch **milliseconds, UTC**. Every sensor carries its `unit` (`celsius`, `rpm`, `percent`) and `category`. Errors use the shape `{"error": "message"}` with a `4xx`/`5xx` status.
 
 ### `GET /api/health`
+
 ```json
 {"status": "ok", "last_sample_ts": 1793347568000, "readings_last_minute": 1560,
  "server_time": 1793347568577, "source": "local", "interval_ms": 500}
 ```
+
 `status` is `stale` when no sample arrived for 3 intervals (at least 5 s). `source` is `local` (this process samples) or `db` (following another process).
 
 ### `GET /api/sensors`
+
 Lists every discovered sensor, CPU cores first (Core 0, Core 4, Core 8 …), then fans and batteries if enabled, with its latest value and the number of its alarms currently firing.
+
 ```json
 [{"id": 2, "key": "coretemp/Core 0", "chip": "coretemp", "label": "Core 0", "kind": "core",
   "category": "temperature", "unit": "celsius", "latest": {"ts": 1793339070000, "value": 40.0},
@@ -433,7 +429,9 @@ Lists every discovered sensor, CPU cores first (Core 0, Core 4, Core 8 …), the
 ```
 
 ### `GET /api/readings?minutes=15[&sensor_ids=1,2][&max_points=600]`
+
 History for the last `minutes` (1–10080), for all sensors or a subset, in equal time buckets of `bucket_ms = max(interval, window / max_points)` (`max_points` 10–10000, default 600). Buckets of 10 s or more come from the rollup table. Each point is `[ts, avg, min, max, count]`. `to` is the newest reading already stored, so a client can append live samples with `ts > to` without gaps or double counting.
+
 ```json
 {"from": 1793338170000, "to": 1793339070500, "minutes": 15, "bucket_ms": 1500, "interval_ms": 500,
  "point_format": ["ts", "avg", "min", "max", "count"],
@@ -443,32 +441,35 @@ History for the last `minutes` (1–10080), for all sensors or a subset, in equa
 ```
 
 ### `GET /api/stream` (Server-Sent Events)
+
 One long-lived response per dashboard (`text/event-stream`, reconnects automatically in browsers):
 
-| Event | Data | When |
-|---|---|---|
-| `hello` | `{"server_time","interval_ms","source"}` | On connect |
-| `samples` | `[{"ts":1793346818500,"v":{"1":36.15,"2":38.46,...}}]` | Every tick (all providers merged) |
-| `alarms` | `[{"id","state","last_value","last_eval_ts","last_change_ts","samples"}]` | After every alarm evaluation |
-| `alarm` | `{"id","sensor_id","sensor_label","state","from","value","ts"}` | On a state transition |
-| `sensors` | `{}` | The sensor set changed |
+| Event     | Data                                                                      | When                              |
+| --------- | ------------------------------------------------------------------------- | --------------------------------- |
+| `hello`   | `{"server_time","interval_ms","source"}`                                  | On connect                        |
+| `samples` | `[{"ts":1793346818500,"v":{"1":36.15,"2":38.46,...}}]`                    | Every tick (all providers merged) |
+| `alarms`  | `[{"id","state","last_value","last_eval_ts","last_change_ts","samples"}]` | After every alarm evaluation      |
+| `alarm`   | `{"id","sensor_id","sensor_label","state","from","value","ts"}`           | On a state transition             |
+| `sensors` | `{}`                                                                      | The sensor set changed            |
 
 A comment line (`: ping`) is sent after 10 s without events. Try it: `curl -N localhost:8080/api/stream`.
 
 ### `GET /api/stats`
+
 Pipeline metrics: bus subscribers (queued, received, dropped), sampler (ticks, read failures, skipped ticks, tick time), DB writer (rows, flushes, flush time, rollups, pruned), alarm engine (evaluations, evaluation time), live clients and MQTT.
 
 ### Alarms
 
-| Method | Path | Body / query | Result |
-|---|---|---|---|
-| `GET` | `/api/alarms` | `?sensor_id=` optional | List with current state |
-| `POST` | `/api/alarms` | see below | `201 {"created": [...]}` |
-| `PATCH` | `/api/alarms/{id}` | any of `func`, `window_min`, `threshold`, `enabled` | Updated alarm |
-| `DELETE` | `/api/alarms/{id}` | | `204` (events cascade) |
-| `GET` | `/api/alarm-events` | `?limit=50&alarm_id=` | Fired/cleared history, newest first |
+| Method   | Path                | Body / query                                        | Result                              |
+| -------- | ------------------- | --------------------------------------------------- | ----------------------------------- |
+| `GET`    | `/api/alarms`       | `?sensor_id=` optional                              | List with current state             |
+| `POST`   | `/api/alarms`       | see below                                           | `201 {"created": [...]}`            |
+| `PATCH`  | `/api/alarms/{id}`  | any of `func`, `window_min`, `threshold`, `enabled` | Updated alarm                       |
+| `DELETE` | `/api/alarms/{id}`  |                                                     | `204` (events cascade)              |
+| `GET`    | `/api/alarm-events` | `?limit=50&alarm_id=`                               | Fired/cleared history, newest first |
 
 Create one alarm for one sensor (the threshold is in that sensor's unit):
+
 ```bash
 curl -X POST localhost:8080/api/alarms -H 'Content-Type: application/json' \
   -d '{"sensor_id": 3, "func": "avg", "window_min": 10, "threshold": 75}'     # a CPU core, °C
@@ -477,21 +478,23 @@ curl -X POST localhost:8080/api/alarms -H 'Content-Type: application/json' \
 curl -X POST localhost:8080/api/alarms -H 'Content-Type: application/json' \
   -d '{"sensor_id": 13, "func": "min", "window_min": 5, "threshold": 20, "op": "<"}'  # a battery below 20 %
 ```
+
 `op` is optional: `">"` (the default) fires when the aggregate is above the threshold, `"<"` when it is below. It can be changed later with `PATCH` like any other field; any other value is rejected with `400`.
 Create the same rule for several sensors at once. This yields **one independent alarm per sensor**, each with its own state and history:
+
 ```bash
 -d '{"sensor_ids": [2,3,4], "func": "max", "window_min": 5, "threshold": 90}'
 -d '{"sensor_ids": "all",   "func": "stddev", "window_min": 10, "threshold": 4}'
 ```
+
 Alarm object:
+
 ```json
 {"id": 11, "sensor_id": 11, "sensor_label": "Core 27", "func": "avg", "window_min": 10,
  "threshold": 75.0, "op": ">", "enabled": true, "state": "firing", "last_value": 77.3,
  "last_eval_ts": 1793339070000, "last_change_ts": 1793338990000, "created_at": 1793338900000,
  "condition": "avg(value, last 10 min) > 75"}
 ```
-
----
 
 ## 7. Alarm engine
 
@@ -506,8 +509,6 @@ Alarm object:
 - **Staleness:** if sampling stops, the window empties and alarms move to `no_data`. Silence is never reported as `ok`.
 - **Notification:** transitions are logged by the server (`WARN … FIRED`), pushed to open dashboards, and published (retained) to MQTT when the bridge is on. No email or webhook is sent (see limitations); a notifier would be one more bus subscriber.
 
----
-
 ## 8. Dashboard
 
 - **Category tabs:** one tab per sensor family present (CPU temperatures, Fans, Battery, or any new category). The selected tab drives the whole page: charts, sensor table and the Alarms section. A tab with firing alarms shows a red `N firing` badge, so a firing alarm stays visible while another tab is open. With only CPU temperatures enabled, no tabs are shown. Values, axes and thresholds use each sensor's unit (°C, RPM, %).
@@ -521,8 +522,6 @@ Alarm object:
 - **Browser tab title:** `System Sensors`, the same as the page heading.
 - API errors are shown in a dismissible banner, and the UI keeps the last good data.
 
----
-
 ## 9. Testing
 
 Step-by-step rebuild instructions and a manual check for every feature, with expected results, are in **[TESTING.md](TESTING.md)**.
@@ -531,6 +530,7 @@ Step-by-step rebuild instructions and a manual check for every feature, with exp
 ctest --test-dir build --output-on-failure     # 19 test groups, 274 checks
 ./build/sd-tests --list                        # run one group: ./build/sd-tests fan
 ```
+
 - **CPU discovery:** a fake sysfs tree shaped like the dev laptop (package skipped, non-contiguous cores in numeric order, unrelated chips ignored, unreadable values), a dual-socket tree with repeated labels, and the AMD per-die, whole-CPU and ARM thermal-zone fallbacks.
 - **Fans and batteries:** stopped fans, fans on several chips, `capacity` vs `energy_now/energy_full`, peripheral batteries ignored, machines with none.
 - **Framework:** registry (unknown names rejected, `all`), manager ordering across providers, and a custom provider defined in the test itself to prove the extension point.
@@ -545,11 +545,12 @@ ctest --test-dir build --output-on-failure     # 19 test groups, 274 checks
 
 Also verified: the whole suite and a server under concurrent load (8 live streams, alarm create/edit/delete, history queries, rediscovery, MQTT) under **ThreadSanitizer** (no data races) and **AddressSanitizer + UBSan** (no memory errors); a 2-minute soak with 10 dashboards (flat memory and thread count, no dropped messages); MQTT against Mosquitto including broker restart and last will; poller → server follow mode and takeover; the start-up schema check on a real database; and the dashboard in headless Chromium (no console errors, no requests after load).
 
----
+
 
 ## 10. Assumptions, trade-offs and limitations
 
 **Assumptions**
+
 - "All available sensors" means every channel the enabled providers find: for CPU temperatures every per-core channel reported by the CPU's hwmon driver, for fans every hwmon fan channel, for batteries every system battery. The package sensor is not tracked; if a database contains one, it is removed with its readings and alarms on start-up (`Database::migrate`).
 - The sensor set is discovered **when sampling starts and again every `--rediscover` seconds** (default 60). A battery that appears or a driver loaded later is picked up without a restart. Historical sensors stay in the DB.
 - On CPUs without per-core sensors (most AMD, ARM), "cores" falls back to the most detailed CPU temperature available (per die, then whole CPU), and the log says which level is used.
@@ -557,6 +558,7 @@ Also verified: the whole suite and a server under concurrent load (8 live stream
 - Linux only. The brief allows any OS, and macOS/Windows readers would be additional `SensorProvider`s behind the same interface.
 
 **Trade-offs**
+
 - **In-process bus instead of a mandatory MQTT broker:** messages between threads cost one queue push and no serialisation, and the system runs on any Linux without extra services. MQTT is an optional bridge for other tools. Splitting sampling and serving into separate machines would use the broker as the transport (a `--source mqtt` subscriber), which this design leaves room for.
 - **One process by default:** simpler to run, and live data needs no inter-process hop. The standalone poller remains for headless recording, and the server follows it automatically.
 - **SQLite over a time-series database:** no infrastructure; per-sensor range scans plus stored 10 s rollups keep queries in milliseconds at this volume.
@@ -567,6 +569,7 @@ Also verified: the whole suite and a server under concurrent load (8 live stream
 - **No hysteresis or "for N consecutive evaluations" debounce.** The windowed aggregate already smooths noise, and each alarm has a single threshold (above or below).
 
 **Known limitations / with more time**
+
 - Webhook/email notification on `fired` (the event table is already the outbox).
 - Alarm hysteresis (`clear_below`) and per-alarm evaluation intervals.
 - Authentication on the API (it currently binds `0.0.0.0` with permissive CORS; use `--host 127.0.0.1` on shared networks).

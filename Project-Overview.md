@@ -13,7 +13,6 @@ A complete guide to the Multi-Sensor Dashboard: what it does, how it is built, h
 5. [Project / repository setup](#5-project--repository-setup)
 6. [Cleaning the project](#6-cleaning-the-project)
 7. [Build commands and code documentation](#7-build-commands-and-code-documentation)
-   - 7.4 Code documentation comments · 7.5 Generate the documentation (Doxygen)
 8. [Test commands](#8-test-commands)
 9. [Running the whole project](#9-running-the-whole-project)
 10. [Configuration reference](#10-configuration-reference)
@@ -321,8 +320,6 @@ git push -u origin main
 - **C++ libraries:** `cpp-httplib` and `nlohmann/json` are vendored in `third_party/`, so the C++ build needs **no network access**.
 - **Frontend packages** are pinned in `frontend/package-lock.json` and installed with `npm ci`.
 
----
-
 ## 6. Cleaning the project
 
 `scripts/clean.sh` removes everything that building or running the project generates:
@@ -427,6 +424,7 @@ xdg-open docs/html/index.html             # open in the browser
 - Input: `src/`, `tests/`, `frontend/src/` and the three Markdown files. `third_party/` and build output are excluded.
 - Without Graphviz, set `HAVE_DOT = NO` in the `Doxyfile` (no diagrams, everything else works).
 - To list anything left undocumented after editing code, run with `EXTRACT_ALL` off:
+  
   ```bash
   (cat Doxyfile; echo "EXTRACT_ALL=NO") | doxygen - && cat docs/doxygen-warnings.log
   ```
@@ -537,8 +535,6 @@ scripts/run_all.sh                    # terminal 1
 stress -c "$(nproc)" -t 120           # terminal 2: all core temperatures climb within seconds
 ```
 
----
-
 ## 9. Running the whole project
 
 ### 9.1 One command (recommended)
@@ -644,7 +640,7 @@ The API has no authentication and binds `0.0.0.0` by default:
 ./build/sensor-server --host 127.0.0.1 --port 8080
 ```
 
----
+
 
 ## 10. Configuration reference
 
@@ -808,8 +804,6 @@ Storage, API, alarms, live stream, MQTT and the dashboard pick up the new sensor
 - No API authentication; use `--host 127.0.0.1` on shared networks.
 - No email/webhook notifications, alarm hysteresis, systemd unit or Docker packaging yet.
 - One sampling interval for all providers.
-
-
 
 ## 19. Command cheat sheet
 
