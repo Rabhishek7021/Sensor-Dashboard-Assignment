@@ -1,0 +1,116 @@
+# Doxygen configuration for the Multi-Sensor Dashboard.
+#
+# Generate the documentation from the project root:
+#     doxygen Doxyfile
+# Output: docs/html/index.html
+#
+# Only non-default settings are listed; run `doxygen -x Doxyfile` to see them,
+# or `doxygen -g full.Doxyfile` for a fully commented template.
+
+#---------------------------------------------------------------------------
+# Project
+#---------------------------------------------------------------------------
+PROJECT_NAME           = "Multi-Sensor Dashboard"
+PROJECT_BRIEF          = "Per-core CPU temperature, fan and battery monitor: C++17 sampler, SQLite store, REST/SSE API, alarm engine and React dashboard"
+OUTPUT_DIRECTORY       = docs
+CREATE_SUBDIRS         = NO
+
+#---------------------------------------------------------------------------
+# Comment parsing
+#---------------------------------------------------------------------------
+# The first sentence of a /// or /** */ comment is used as the brief description.
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+# The frontend (.js / .jsx) is parsed with the C++ parser: it reads `function`
+# declarations, constants and /** */ comments of modern JavaScript (import /
+# export, JSX) far better than Doxygen's own JavaScript parser.
+EXTENSION_MAPPING      = js=C++ \
+                         jsx=C++
+BUILTIN_STL_SUPPORT    = YES
+# Strip the absolute part of paths so the file list shows src/..., frontend/...
+FULL_PATH_NAMES        = YES
+STRIP_FROM_PATH        = .
+STRIP_FROM_INC_PATH    = src
+
+#---------------------------------------------------------------------------
+# What to extract
+#---------------------------------------------------------------------------
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_ANON_NSPACES   = YES
+EXTRACT_LOCAL_CLASSES  = YES
+SORT_MEMBER_DOCS       = NO
+# One comment documents every variable of a multi-variable declaration (a, b;).
+DISTRIBUTE_GROUP_DOC   = YES
+SHOW_NAMESPACES        = YES
+
+#---------------------------------------------------------------------------
+# Warnings
+#---------------------------------------------------------------------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+WARN_LOGFILE           = docs/doxygen-warnings.log
+
+#---------------------------------------------------------------------------
+# Input
+#---------------------------------------------------------------------------
+INPUT                  = README.md \
+                         Project-Overview.md \
+                         TESTING.md \
+                         src \
+                         tests \
+                         frontend/src
+FILE_PATTERNS          = *.md \
+                         *.hpp \
+                         *.cpp \
+                         *.js \
+                         *.jsx
+RECURSIVE              = YES
+# Vendored third-party headers and build output are not part of this project.
+EXCLUDE                = third_party \
+                         build \
+                         frontend/dist \
+                         frontend/node_modules
+USE_MDFILE_AS_MAINPAGE = README.md
+# GitHub-style in-page links ([text](#section)) cannot be resolved by Doxygen;
+# this filter turns them into plain text for the generated pages only.
+# Run through bash so the filter works even without the executable bit.
+FILTER_PATTERNS        = "*.md=bash scripts/doxygen-md-filter.sh"
+
+#---------------------------------------------------------------------------
+# Source browsing
+#---------------------------------------------------------------------------
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+
+#---------------------------------------------------------------------------
+# Output
+#---------------------------------------------------------------------------
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+GENERATE_LATEX         = NO
+
+#---------------------------------------------------------------------------
+# Diagrams (uses Graphviz `dot` when installed; set HAVE_DOT = NO without it)
+#---------------------------------------------------------------------------
+HAVE_DOT               = YES
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = YES
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+DOT_MULTI_TARGETS      = YES

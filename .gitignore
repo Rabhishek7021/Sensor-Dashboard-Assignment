@@ -1,0 +1,24 @@
+# C++ build tree
+build/
+cmake-build-*/
+
+# Generated code documentation (doxygen Doxyfile)
+docs/
+
+# Runtime data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.lock
+
+# Frontend
+frontend/node_modules/
+frontend/.vite/
+# Built dashboard (npm run build, or scripts/run_all.sh on its first run)
+frontend/dist/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
