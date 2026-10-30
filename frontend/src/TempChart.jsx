@@ -8,11 +8,18 @@ import {
 } from 'recharts';
 import { formatValue, unitInfo } from './units.js';
 
-/** Line colours; a sensor keeps the same colour in the table and every chart. */
+/**
+ * Line colours; a sensor keeps the same colour in the table and every chart.
+ * Light, desaturated tones that stay readable on the dark chart field
+ * (all at least 7:1). Orange-red is deliberately absent: in this theme it means
+ * "alarm" (threshold lines of firing alarms, firing badges).
+ */
 const PALETTE = [
-  '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
-  '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', '#393b79', '#ad494a',
+  '#e9e7e3', '#6fa8dc', '#8cc98f', '#b79ae6', '#e3c55a', '#5cc4c6',
+  '#a8a39b', '#e58fb0', '#8f9ff2', '#c9b48a', '#9fb8d6', '#d6a4e0',
 ];
+/** Theme colours used inside the charts (see styles.css). */
+const THEME = { grid: '#2c2c2c', axis: '#a39f98', signal: '#e4480f', ember: '#ff6b35', threshold: '#a39f98' };
 /**
  * Colour for a sensor's index within its family.
  * Parameters:
@@ -21,9 +28,9 @@ const PALETTE = [
  */
 export const colorFor = (index) => PALETTE[index % PALETTE.length];
 
-/** Formats an epoch-ms timestamp as a local HH:MM:SS axis label. */
-const fmtTime = (ts) =>
-  new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+/** Formats an epoch-ms timestamp as a local 24-hour HH:MM:SS axis label (short enough not to clip). */
+export const fmtTime = (ts) =>
+  new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
 /**
  * Merges series into chart rows {ts, s<id>: value}.
@@ -58,12 +65,13 @@ function mergeSeries(series) {
  */
 function axes(from, to, unit) {
   return [
-    <CartesianGrid key="g" strokeDasharray="3 3" stroke="#ddd" />,
+    <CartesianGrid key="g" strokeDasharray="2 4" stroke={THEME.grid} />,
     <XAxis
       key="x" dataKey="ts" type="number" scale="time" domain={[from, to]}
-      tickFormatter={fmtTime} minTickGap={40} fontSize={11}
+      tickFormatter={fmtTime} minTickGap={40} fontSize={11} stroke={THEME.axis} tick={{ fill: THEME.axis }}
     />,
     <YAxis key="y" unit={unitInfo(unit).axis} domain={['auto', 'auto']} width={58} fontSize={11}
+      stroke={THEME.axis} tick={{ fill: THEME.axis }}
       allowDecimals={false} />,
     <Tooltip
       key="t"
@@ -93,7 +101,7 @@ export const CombinedChart = React.memo(function CombinedChart({ series, colorIn
   if (!data.length) return <div className="empty">No readings in this window yet.</div>;
   return (
     <ResponsiveContainer width="100%" height={380}>
-      <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+      <LineChart data={data} margin={{ top: 8, right: 30, bottom: 4, left: 0 }}>
         {axes(from, to, unit)}
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {shown.map((s) => (
@@ -131,7 +139,7 @@ export const PerSensorGrid = React.memo(function PerSensorGrid({ series, colorIn
               <span>{formatValue(last, s.unit || unit)}</span>
             </div>
             <ResponsiveContainer width="100%" height={150}>
-              <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
+              <LineChart data={data} margin={{ top: 4, right: 28, bottom: 0, left: -8 }}>
                 {axes(from, to, s.unit || unit)}
                 <Line
                   dataKey="v" name={s.label} stroke={colorFor(colorIndex[s.sensor_id])}
@@ -139,9 +147,10 @@ export const PerSensorGrid = React.memo(function PerSensorGrid({ series, colorIn
                 />
                 {own.map((a) => (
                   <ReferenceLine
-                    key={a.id} y={a.threshold} stroke={a.state === 'firing' ? '#c00' : '#999'}
+                    key={a.id} y={a.threshold} stroke={a.state === 'firing' ? THEME.signal : THEME.threshold}
                     strokeDasharray="4 3" ifOverflow="extendDomain"
-                    label={{ value: `${a.func}${a.op || '>'}${a.threshold}`, fontSize: 10, position: 'insideTopRight' }}
+                    label={{ value: `${a.func}${a.op || '>'}${a.threshold}`, fontSize: 10, position: 'insideTopRight',
+                      fill: a.state === 'firing' ? THEME.ember : THEME.threshold }}
                   />
                 ))}
               </LineChart>

@@ -11,6 +11,7 @@
 import React, { useState } from 'react';
 import { api } from './api.js';
 import { categoryInfo, formatValue, unitInfo } from './units.js';
+import { fmtTime } from './TempChart.jsx';
 
 /** Aggregate functions an alarm can use. */
 const FUNCS = ['avg', 'max', 'min', 'stddev'];
@@ -26,8 +27,10 @@ const SUGGEST = {
   fan: { op: '>', threshold: 4500 },
   battery: { op: '<', threshold: 20 },
 };
-/** Local time of an epoch-ms timestamp, or a dash. */
-const fmtTs = (ts) => (ts ? new Date(ts).toLocaleTimeString() : '—');
+/** Local 24-hour time of an epoch-ms timestamp (as on the charts), or a dash. */
+const fmtTs = (ts) => (ts ? fmtTime(ts) : '—');
+/** Local date and 24-hour time of an epoch-ms timestamp (event log). */
+const fmtDateTime = (ts) => new Date(ts).toLocaleString([], { hour12: false });
 /** Formats an alarm's aggregate; stddev is a spread in the sensor's unit, shown with more precision. */
 const fmtVal = (v, func, unit) => formatValue(v, unit, func === 'stddev' ? 2 : undefined);
 
@@ -194,7 +197,7 @@ export function AlarmPanel({ category, sensors, alarms, events, refresh, onError
           <tbody>
             {shownEvents.map((e) => (
               <tr key={e.id}>
-                <td>{new Date(e.ts).toLocaleString()}</td>
+                <td>{fmtDateTime(e.ts)}</td>
                 <td>#{e.alarm_id}</td>
                 <td>{e.sensor_label}</td>
                 <td><span className={`badge badge-${e.type === 'fired' ? 'firing' : 'ok'}`}>{e.type}</span></td>

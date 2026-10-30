@@ -18,7 +18,8 @@ export default defineConfig({
         // their hashed names (and the browser cache) when only dashboard code
         // changes.
         manualChunks(id) {
-          if (!id.includes('node_modules')) return undefined;
+          // The bundled fonts' CSS stays with the dashboard's own stylesheet.
+          if (!id.includes('node_modules') || id.includes('@fontsource')) return undefined;
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'react';
           return 'charts';
         },

@@ -3,10 +3,12 @@
  * @brief Dashboard page: header, category tabs, charts, sensor table and alarm panel.
  */
 import React, { useMemo, useState } from 'react';
-import { CombinedChart, PerSensorGrid, colorFor } from './TempChart.jsx';
+import { CombinedChart, PerSensorGrid, colorFor, fmtTime } from './TempChart.jsx';
 import { AlarmPanel, StateBadge } from './AlarmPanel.jsx';
 import { categoriesOf, categoryInfo, formatValue } from './units.js';
 import { useLiveData } from './live.js';
+/** Armory logo for the header (web-sized copy of `frontend/assets/Armory-Logo-Metal.png`). */
+import logoUrl from './assets/logo.webp';
 
 /** Selectable history windows in minutes (5 min ... 24 h). */
 const WINDOWS = [5, 15, 60, 360, 1440];
@@ -60,32 +62,49 @@ export default function App() {
   const series = useMemo(
     () => chart.series.filter((s) => (s.category || 'temperature') === active), [chart, active],
   );
-  // Number of alarms currently firing (header badge).
-  const firingCount = alarms.filter((a) => a.state === 'firing').length;
+  // Alarms currently firing, in every family (alert strip under the header).
+  const firing = alarms.filter((a) => a.state === 'firing');
+  const FIRING_SHOWN = 4;  // the strip names this many and counts the rest
 
-  // Header summary, e.g. "10 cores · 2 fans · 1 battery".
+  // Header summary tags, e.g. "10 cores", "2 fans", "1 battery".
   const counts = categories.map((c) => {
     const list = sensors.filter((s) => s.category === c);
     const ci = categoryInfo(c, list);
     return `${list.length} ${list.length === 1 ? ci.item.toLowerCase() : ci.items}`;
   });
 
-  // Layout: header (counts, live marker, firing badge), error banner, category tabs,
-  // chart section (window / view toolbar), sensor table, alarm panel.
+  // Layout: header (title, sensor counts, live marker, time of the latest sample),
+  // alert strip while alarms fire, error banner, category tabs, chart section
+  // (window / view toolbar), sensor table, alarm panel.
   return (
     <div className="page">
       <header>
-        <h1>System Sensors</h1>
+        <div className="brand">
+          <img className="logo" src={logoUrl} alt="Armory" width="794" height="84" />
+          <h1>System sensors</h1>
+        </div>
         <div className="meta">
-          {sensors.length ? counts.join(' · ') : 'no sensors detected yet'}
-          {' · '}
+          {sensors.length
+            ? counts.map((c) => <span key={c} className="count">{c}</span>)
+            : <span className="count">No sensors detected yet</span>}
           <span className={`live ${status.connected ? 'live-on' : 'live-off'}`}>
-            {status.connected ? 'live' : 'reconnecting…'}
+            {status.connected ? 'Live' : 'Reconnecting…'}
           </span>
-          {status.lastTs ? ` ${new Date(status.lastTs).toLocaleTimeString()}` : ''}
-          {firingCount > 0 && <span className="badge badge-firing">{firingCount} alarm(s) firing</span>}
+          {status.lastTs ? <span className="clock">{fmtTime(status.lastTs)}</span> : null}
         </div>
       </header>
+
+      {firing.length > 0 && (
+        <div className="alert-strip" role="status">
+          <strong>{firing.length === 1 ? '1 alarm firing' : `${firing.length} alarms firing`}</strong>
+          <ul>
+            {firing.slice(0, FIRING_SHOWN).map((a) => (
+              <li key={a.id}><b>{a.sensor_label}</b> {a.condition.replace('(value, ', '(')}</li>
+            ))}
+            {firing.length > FIRING_SHOWN && <li>and {firing.length - FIRING_SHOWN} more</li>}
+          </ul>
+        </div>
+      )}
 
       {error && <div className="error" onClick={() => setError(null)}>{error} (click to dismiss)</div>}
 
@@ -128,8 +147,10 @@ export default function App() {
           )}
         </div>
         {view === 'combined' ? (
-          <CombinedChart series={series} colorIndex={colorIndex} visible={visible} unit={unit}
-            from={chart.from} to={chart.to} />
+          <div className="chart-field">
+            <CombinedChart series={series} colorIndex={colorIndex} visible={visible} unit={unit}
+              from={chart.from} to={chart.to} />
+          </div>
         ) : (
           <PerSensorGrid series={series} colorIndex={colorIndex} visible={visible} unit={unit}
             alarms={alarms} from={chart.from} to={chart.to} />
