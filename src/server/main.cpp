@@ -203,12 +203,23 @@ std::map<int64_t, std::string> sensor_labels(sd::db::Database& db) {
     return m;
 }
 
+/// @brief Rejects a threshold outside the range of the sensor's unit
+///        (sd::alarm::threshold_range: -50 to 100 °C, 0 to 5000 RPM, 0 to 100 %).
+/// @throws HttpError 400 naming the sensor and the accepted range.
+void check_threshold(const sd::db::Sensor& s, double threshold) {
+    if (sd::alarm::is_valid_threshold(s.unit, threshold)) return;
+    const auto r = sd::alarm::threshold_range(s.unit);
+    std::ostringstream msg;
+    msg << "threshold for " << s.label << " must be from " << r->min << " to " << r->max << " " << r->suffix;
+    throw HttpError(400, msg.str());
+}
+
 /// @brief Parses the request body as JSON.
-/// @throws HttpError 400 for invalid JSON.
+/// @throws HttpError 400 for invalid JSON, including numbers too large for a double (e.g. 1e400).
 json parse_body(const httplib::Request& req) {
     try {
         return json::parse(req.body);
-    } catch (const json::parse_error& e) {
+    } catch (const json::exception& e) {
         throw HttpError(400, std::string("invalid JSON body: ") + e.what());
     }
 }
@@ -226,12 +237,13 @@ void validate_alarm_fields(const json& b, bool require_all) {
             throw HttpError(400, "func must be one of avg, max, min, stddev");
     }
     if (b.contains("window_min")) {
-        if (!b["window_min"].is_number_integer() || b["window_min"].get<int64_t>() <= 0 ||
-            b["window_min"].get<int64_t>() > kMaxWindowMinutes)
-            throw HttpError(400, "window_min must be a positive integer (minutes, max " +
-                                     std::to_string(kMaxWindowMinutes) + ")");
+        if (!b["window_min"].is_number_integer() || !sd::alarm::is_valid_window(b["window_min"].get<int64_t>()))
+            throw HttpError(400, "window_min must be a whole number of minutes from " +
+                                     std::to_string(sd::alarm::kMinWindowMin) + " to " +
+                                     std::to_string(sd::alarm::kMaxWindowMin));
     }
-    if (b.contains("threshold") && !b["threshold"].is_number())
+    // The range of a threshold depends on the sensor's unit; see check_threshold().
+    if (b.contains("threshold") && (!b["threshold"].is_number() || !std::isfinite(b["threshold"].get<double>())))
         throw HttpError(400, "threshold must be a number");
     // Optional everywhere: a new alarm without "op" fires above the threshold.
     if (b.contains("op") && (!b["op"].is_string() || !sd::alarm::is_valid_op(b["op"].get<std::string>())))
@@ -767,6 +779,13 @@ int main(int argc, char** argv) {
             if (targets.empty()) throw HttpError(400, "no target sensors");
             for (auto id : targets)
                 if (!api_db.sensor_exists(id)) throw HttpError(404, "sensor " + std::to_string(id) + " not found");
+            {
+                // The threshold must suit every target's unit; nothing is created otherwise.
+                const double y = b["threshold"].get<double>();
+                const std::set<int64_t> wanted(targets.begin(), targets.end());
+                for (const auto& s : api_db.list_sensors())
+                    if (wanted.count(s.id)) check_threshold(s, y);
+            }
 
             const int64_t now = time::now_ms();
             std::vector<int64_t> created;
@@ -789,6 +808,12 @@ int main(int argc, char** argv) {
             json b = parse_body(req);
             if (!b.is_object()) throw HttpError(400, "body must be a JSON object");
             validate_alarm_fields(b, false);
+            if (b.contains("threshold")) {
+                const auto cur = api_db.get_alarm(id);
+                if (!cur) throw HttpError(404, "alarm not found");
+                for (const auto& s : api_db.list_sensors())
+                    if (s.id == cur->sensor_id) check_threshold(s, b["threshold"].get<double>());
+            }
             db::AlarmPatch p;
             if (b.contains("func")) p.func = b["func"].get<std::string>();
             if (b.contains("window_min")) p.window_min = b["window_min"].get<int>();

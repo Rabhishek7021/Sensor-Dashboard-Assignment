@@ -10,7 +10,7 @@
  */
 import React, { useState } from 'react';
 import { api } from './api.js';
-import { categoryInfo, formatValue, unitInfo } from './units.js';
+import { WINDOW_LIMITS, categoryInfo, formatValue, thresholdLimits, unitInfo } from './units.js';
 import { fmtTime } from './TempChart.jsx';
 
 /** Aggregate functions an alarm can use. */
@@ -27,6 +27,56 @@ const SUGGEST = {
   fan: { op: '>', threshold: 4500 },
   battery: { op: '<', threshold: 20 },
 };
+/** Unit text used in the form's labels and messages, e.g. "°C", "RPM", "%". */
+const unitText = (unit) => (unit === 'rpm' ? 'RPM' : unitInfo(unit).axis || unit || '');
+
+/**
+ * Characters the window field accepts while typing: whole minutes, at most 3 digits
+ * (no sign, decimal point or exponent). Anything else is not entered at all.
+ */
+const WINDOW_TYPING = /^\d{0,3}$/;
+
+/**
+ * Pattern for what the threshold field accepts while typing: digits with an optional
+ * decimal part of up to 2 places, and a leading minus only when the unit allows
+ * negative values. Letters, exponents ("1e3") and other symbols are not entered at all.
+ * Parameters:
+ * - limits: Range of the unit, or null for any number. (type: ?Object)
+ * @returns {RegExp} Pattern for a partial entry.
+ */
+const thresholdTyping = (limits) => (limits && limits.min >= 0 ? /^\d{0,4}(\.\d{0,2})?$/ : /^-?\d{0,4}(\.\d{0,2})?$/);
+
+/**
+ * Checks the window X entry.
+ * Parameters:
+ * - text: Field content. (type: string)
+ * @returns {?string} Error message, or null when valid.
+ */
+function windowError(text) {
+  const { min, max } = WINDOW_LIMITS;
+  if (text === '') return `Enter window X: ${min} to ${max} minutes.`;
+  const n = Number(text);
+  if (!/^\d+$/.test(text) || n < min || n > max) return `Window X must be ${min} to ${max} minutes.`;
+  return null;
+}
+
+/**
+ * Checks the threshold Y entry against the range of the sensor's unit.
+ * Parameters:
+ * - text: Field content. (type: string)
+ * - unit: Unit of the target sensors. (type: string)
+ * @returns {?string} Error message, or null when valid.
+ */
+function thresholdError(text, unit) {
+  const limits = thresholdLimits(unit);
+  const range = limits ? `${limits.min} to ${limits.max} ${unitText(unit)}` : 'a number';
+  if (text === '') return `Enter threshold Y: ${range}.`;
+  const n = Number(text);
+  if (!/^-?\d+(\.\d+)?$/.test(text) || !Number.isFinite(n)) return `Threshold Y must be ${range}.`;
+  if (limits && (n < limits.min || n > limits.max)) return `Threshold Y must be ${range}.`;
+  return null;
+}
+
 /** Local 24-hour time of an epoch-ms timestamp (as on the charts), or a dash. */
 const fmtTs = (ts) => (ts ? fmtTime(ts) : '—');
 /** Local date and 24-hour time of an epoch-ms timestamp (event log). */
@@ -48,6 +98,11 @@ export function StateBadge({ state }) {
  * sensor of it (e.g. every core); the backend creates one independent alarm per
  * target sensor. The parent remounts the form (React key) when the family changes,
  * so the target and the suggested comparison / threshold start fresh.
+ *
+ * Inputs are validated as they are typed: characters that cannot form a valid entry
+ * are not accepted, an out-of-range value shows an error and disables "Add alarm".
+ * The limits are the same as the API's (window X 1 to 100 min; threshold Y -50 to
+ * 100 °C, 0 to 5000 RPM, 0 to 100 %).
  * Props:
  * - category: The selected sensor family, e.g. "temperature". (type: string)
  * - sensors: Sensors of that family only. (type: Array)
@@ -59,18 +114,22 @@ function AlarmForm({ category, sensors, onCreated, onError }) {
   const ci = categoryInfo(category, sensors);
   const [target, setTarget] = useState('all');
   const [func, setFunc] = useState('avg');
-  const [windowMin, setWindowMin] = useState(10);
-  const [threshold, setThreshold] = useState(suggestion.threshold);
+  const [windowMin, setWindowMin] = useState('10');
+  const [threshold, setThreshold] = useState(String(suggestion.threshold));
   const [op, setOp] = useState(suggestion.op);
   const [busy, setBusy] = useState(false);
 
   // "all" = every sensor of the family; otherwise one sensor id.
   const targets = target === 'all' ? sensors : sensors.filter((s) => String(s.id) === target);
   const unit = targets[0]?.unit ?? sensors[0]?.unit;
+  const limits = thresholdLimits(unit);
+  const errors = [windowError(windowMin), thresholdError(threshold, unit)];
+  const invalid = errors.some(Boolean);
 
-  /** Creates the alarm(s) for the chosen target(s). */
+  /** Creates the alarm(s) for the chosen target(s); does nothing while an entry is invalid. */
   const submit = async (e) => {
     e.preventDefault();
+    if (invalid) return;
     setBusy(true);
     try {
       await api.createAlarm({
@@ -85,7 +144,7 @@ function AlarmForm({ category, sensors, onCreated, onError }) {
   };
 
   return (
-    <form className="alarm-form" onSubmit={submit}>
+    <form className="alarm-form" onSubmit={submit} noValidate>
       <label>
         Sensor
         <select value={target} onChange={(e) => setTarget(e.target.value)}>
@@ -100,9 +159,11 @@ function AlarmForm({ category, sensors, onCreated, onError }) {
         </select>
       </label>
       <label>
-        Window X (min)
-        <input type="number" min="1" step="1" required value={windowMin}
-          onChange={(e) => setWindowMin(e.target.value)} />
+        Window X (min, {WINDOW_LIMITS.min} to {WINDOW_LIMITS.max})
+        <input type="text" inputMode="numeric" required value={windowMin}
+          className={errors[0] ? 'invalid' : undefined} aria-invalid={Boolean(errors[0])}
+          aria-describedby="alarm-form-status"
+          onChange={(e) => WINDOW_TYPING.test(e.target.value) && setWindowMin(e.target.value)} />
       </label>
       <label>
         Fires when
@@ -111,12 +172,18 @@ function AlarmForm({ category, sensors, onCreated, onError }) {
         </select>
       </label>
       <label>
-        Threshold Y {unitInfo(unit).axis ? `(${unitInfo(unit).axis})` : unit ? `(${unit})` : ''}
-        <input type="number" step="0.1" required value={threshold}
-          onChange={(e) => setThreshold(e.target.value)} />
+        Threshold Y ({[unitText(unit), limits && `${limits.min} to ${limits.max}`].filter(Boolean).join(', ')})
+        <input type="text" inputMode={limits && limits.min >= 0 ? 'decimal' : 'text'} required value={threshold}
+          className={errors[1] ? 'invalid' : undefined} aria-invalid={Boolean(errors[1])}
+          aria-describedby="alarm-form-status"
+          onChange={(e) => thresholdTyping(limits).test(e.target.value) && setThreshold(e.target.value)} />
       </label>
-      <button type="submit" disabled={busy || !targets.length}>Add alarm</button>
-      <p className="hint">Fires when {func}(value, last {windowMin || 'X'} min) {op} {threshold === '' ? 'Y' : threshold}</p>
+      <button type="submit" disabled={busy || invalid || !targets.length}>Add alarm</button>
+      {invalid ? (
+        <p className="hint form-error" id="alarm-form-status" role="alert">{errors.filter(Boolean).join(' ')}</p>
+      ) : (
+        <p className="hint" id="alarm-form-status">Fires when {func}(value, last {windowMin} min) {op} {threshold}</p>
+      )}
     </form>
   );
 }

@@ -16,6 +16,30 @@ const UNITS = {
   watt: { suffix: ' W', axis: 'W', digits: 1 },
 };
 
+/**
+ * Accepted alarm threshold Y per unit, bounds included. Must match
+ * sd::alarm::threshold_range() in src/common/alarm_logic.hpp (the API rejects
+ * anything else). Units without an entry accept any number.
+ */
+const THRESHOLD_LIMITS = {
+  celsius: { min: -50, max: 100 },
+  rpm: { min: 0, max: 5000 },
+  percent: { min: 0, max: 100 },
+};
+
+/** Accepted alarm window X in whole minutes (sd::alarm::kMinWindowMin / kMaxWindowMin). */
+export const WINDOW_LIMITS = { min: 1, max: 100 };
+
+/**
+ * Accepted threshold range of a unit.
+ * Parameters:
+ * - unit: Unit from the API, e.g. "rpm". (type: string)
+ * @returns {?{min: number, max: number}} The range, or null if any number is accepted.
+ */
+export function thresholdLimits(unit) {
+  return THRESHOLD_LIMITS[unit] || null;
+}
+
 /** Titles per sensor category: tab title, singular item name and plural. */
 const CATEGORIES = {
   temperature: { title: 'CPU temperatures', item: 'Core', items: 'cores' },

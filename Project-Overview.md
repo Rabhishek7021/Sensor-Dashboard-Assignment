@@ -54,7 +54,7 @@ Two executables are produced:
 | --------------- | ------------------------------------------------------------------------------------------------- |
 | `sensor-server` | Main program: sampling + storage + alarms + REST API + live stream + serves the dashboard         |
 | `sensor-poller` | Headless sampler: records to the database with no HTTP; also used for `--list` (sensor discovery) |
-| `sd-tests`      | Unit test runner (19 test groups)                                                                 |
+| `sd-tests`      | Unit test runner (20 test groups)                                                                 |
 
 ## 2. Project structure
 
@@ -83,7 +83,7 @@ Multi-Sensor-Dasboard/
 │   ├── pipeline/             sd_pipeline: sampler, DB writer, DB follower, MQTT bridge, CLI options
 │   ├── poller/main.cpp       sensor-poller executable
 │   └── server/               sensor-server: main.cpp (HTTP/SSE/static), alarm_engine.*, live_cache.hpp
-├── tests/test_main.cpp       All unit tests (19 groups, 274 checks)
+├── tests/test_main.cpp       All unit tests (20 groups, 285 checks)
 ├── third_party/              httplib.h, nlohmann/json.hpp (MIT, vendored: no network needed to build)
 └── frontend/
     ├── package.json, package-lock.json, vite.config.js, index.html
@@ -468,7 +468,7 @@ Regenerate after any code change with `doxygen Doxyfile` (it rewrites `docs/html
 ctest --test-dir build --output-on-failure
 ```
 
-**Expected:** `100% tests passed, 0 tests failed out of 20`. That is one entry that runs everything, plus one entry for each of the 19 groups (274 checks).
+**Expected:** `100% tests passed, 0 tests failed out of 21`. That is one entry that runs everything, plus one entry for each of the 20 groups (285 checks).
 
 Run the test binary directly:
 
@@ -480,27 +480,28 @@ Run the test binary directly:
 ctest --test-dir build -R alarm      # select through CTest by regex
 ```
 
-| Test group               | What it verifies                                                                                         |
-| ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `cpu_temp_single_socket` | Laptop layout: package sensor skipped, cores ordered 0, 4, 8 … 27, unrelated chips ignored               |
-| `cpu_temp_multi_socket`  | Two CPUs with repeated `Core 0` labels get unique keys and `CPU0`/`CPU1` labels                          |
-| `cpu_temp_fallbacks`     | AMD per-die (`Tccd`), whole-CPU (`Tctl`) and ARM thermal-zone fallbacks                                  |
-| `fan_provider`           | RPM reading, stopped fan, fans on several chips                                                          |
-| `battery_provider`       | `capacity` and `energy_now/energy_full`, peripheral batteries ignored, no battery                        |
-| `registry_and_manager`   | Unknown providers rejected, `all`, ordering CPU → fan → battery                                          |
-| `custom_provider`        | A provider defined outside the project plugs in unchanged                                                |
-| `store_and_aggregates`   | Stable ids, avg/min/max/stddev, bucketed queries, retention                                              |
-| `migrate_drops_package`  | A package sensor in the database is removed with its readings, alarms and events                         |
-| `migrate_adds_category`  | A database without the `category` column gets it; ids kept                                               |
-| `migrate_adds_op`        | Alarm tables without the `op` column get it; existing alarms and events become `>`                       |
-| `alarm_logic`            | Each function, strict `>` and `<` boundaries, operator validation, minimum samples                       |
-| `alarm_below_threshold`  | A battery `min < 20`-style alarm fires and clears; events store `<`; changing `op` rejects stale results |
-| `alarm_engine_per_core`  | Per-core independence, warm-up from DB, transitions, disable, cascade delete                             |
-| `bus`                    | MQTT filter matching, delivery, drop-oldest overflow, 4 × 10 000 messages, nothing lost                  |
-| `second_window`          | Sliding window vs brute force over 4 h of random data                                                    |
-| `db_writer`              | Batching, rollups equal raw aggregates, retention, nothing lost on stop                                  |
-| `sampler`                | One thread per provider, aligned ticks, rediscovery at run time                                          |
-| `follower_and_lock`      | Second sampler refused, lock released, follower republishes rows in order                                |
+| Test group               | What it verifies                                                                                                     |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `cpu_temp_single_socket` | Laptop layout: package sensor skipped, cores ordered 0, 4, 8 … 27, unrelated chips ignored                           |
+| `cpu_temp_multi_socket`  | Two CPUs with repeated `Core 0` labels get unique keys and `CPU0`/`CPU1` labels                                      |
+| `cpu_temp_fallbacks`     | AMD per-die (`Tccd`), whole-CPU (`Tctl`) and ARM thermal-zone fallbacks                                              |
+| `fan_provider`           | RPM reading, stopped fan, fans on several chips                                                                      |
+| `battery_provider`       | `capacity` and `energy_now/energy_full`, peripheral batteries ignored, no battery                                    |
+| `registry_and_manager`   | Unknown providers rejected, `all`, ordering CPU → fan → battery                                                      |
+| `custom_provider`        | A provider defined outside the project plugs in unchanged                                                            |
+| `store_and_aggregates`   | Stable ids, avg/min/max/stddev, bucketed queries, retention                                                          |
+| `migrate_drops_package`  | A package sensor in the database is removed with its readings, alarms and events                                     |
+| `migrate_adds_category`  | A database without the `category` column gets it; ids kept                                                           |
+| `migrate_adds_op`        | Alarm tables without the `op` column get it; existing alarms and events become `>`                                   |
+| `alarm_logic`            | Each function, strict `>` and `<` boundaries, operator validation, minimum samples                                   |
+| `alarm_input_limits`     | Window 1–100 min; threshold −50–100 °C, 0–5000 RPM, 0–100 % with bounds included; other units take any finite number |
+| `alarm_below_threshold`  | A battery `min < 20`-style alarm fires and clears; events store `<`; changing `op` rejects stale results             |
+| `alarm_engine_per_core`  | Per-core independence, warm-up from DB, transitions, disable, cascade delete                                         |
+| `bus`                    | MQTT filter matching, delivery, drop-oldest overflow, 4 × 10 000 messages, nothing lost                              |
+| `second_window`          | Sliding window vs brute force over 4 h of random data                                                                |
+| `db_writer`              | Batching, rollups equal raw aggregates, retention, nothing lost on stop                                              |
+| `sampler`                | One thread per provider, aligned ticks, rediscovery at run time                                                      |
+| `follower_and_lock`      | Second sampler refused, lock released, follower republishes rows in order                                            |
 
 ### 8.2 Smoke test of the running system
 
@@ -672,18 +673,18 @@ All flags are shown by `./build/sensor-server --help` and `./build/sensor-poller
 
 All timestamps are Unix epoch **milliseconds, UTC**. Errors use `{"error": "message"}` with a 4xx/5xx status.
 
-| Method | Path                                                         | Purpose                                                                                                                                         |
-| ------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/health`                                                | `status` (`ok` / `stale`), last sample time, readings in the last minute, `source` (`local` / `db`)                                             |
-| GET    | `/api/sensors`                                               | All sensors with `unit`, `category`, latest value, number of firing alarms                                                                      |
-| GET    | `/api/readings?minutes=15[&sensor_ids=1,2][&max_points=600]` | Bucketed history; each point `[ts, avg, min, max, count]`                                                                                       |
-| GET    | `/api/stream`                                                | Server-Sent Events: `hello`, `samples`, `alarms`, `alarm`, `sensors`                                                                            |
-| GET    | `/api/stats`                                                 | Pipeline metrics (queues, drops, tick/flush times, alarm eval time, MQTT)                                                                       |
-| GET    | `/api/alarms[?sensor_id=]`                                   | Alarms with current state                                                                                                                       |
-| POST   | `/api/alarms`                                                | Create: `{"sensor_id" \| "sensor_ids":[..] \| "all", "func", "window_min", "threshold", "op"}` → `201` (`op` optional: `">"` default, or `"<"`) |
-| PATCH  | `/api/alarms/{id}`                                           | Change `func`, `window_min`, `threshold`, `op`, `enabled`                                                                                       |
-| DELETE | `/api/alarms/{id}`                                           | `204`; events cascade                                                                                                                           |
-| GET    | `/api/alarm-events?limit=50[&alarm_id=]`                     | Fired/cleared history, newest first                                                                                                             |
+| Method | Path                                                         | Purpose                                                                                                                                                                                                                                          |
+| ------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/health`                                                | `status` (`ok` / `stale`), last sample time, readings in the last minute, `source` (`local` / `db`)                                                                                                                                              |
+| GET    | `/api/sensors`                                               | All sensors with `unit`, `category`, latest value, number of firing alarms                                                                                                                                                                       |
+| GET    | `/api/readings?minutes=15[&sensor_ids=1,2][&max_points=600]` | Bucketed history; each point `[ts, avg, min, max, count]`                                                                                                                                                                                        |
+| GET    | `/api/stream`                                                | Server-Sent Events: `hello`, `samples`, `alarms`, `alarm`, `sensors`                                                                                                                                                                             |
+| GET    | `/api/stats`                                                 | Pipeline metrics (queues, drops, tick/flush times, alarm eval time, MQTT)                                                                                                                                                                        |
+| GET    | `/api/alarms[?sensor_id=]`                                   | Alarms with current state                                                                                                                                                                                                                        |
+| POST   | `/api/alarms`                                                | Create: `{"sensor_id" \| "sensor_ids":[..] \| "all", "func", "window_min", "threshold", "op"}` → `201` (`op` optional: `">"` default, or `"<"`). `window_min` 1–100; `threshold` −50–100 °C, 0–5000 RPM, 0–100 % by sensor unit; otherwise `400` |
+| PATCH  | `/api/alarms/{id}`                                           | Change `func`, `window_min`, `threshold`, `op`, `enabled` (same limits as create)                                                                                                                                                                |
+| DELETE | `/api/alarms/{id}`                                           | `204`; events cascade                                                                                                                                                                                                                            |
+| GET    | `/api/alarm-events?limit=50[&alarm_id=]`                     | Fired/cleared history, newest first                                                                                                                                                                                                              |
 
 Create one alarm per sensor in one call (`"all"` means every sensor of every family; pass a list of ids to target only the cores, or only the fans):
 
@@ -743,7 +744,7 @@ Served by `sensor-server` at `http://localhost:8080` from `frontend/dist`, which
 - Time window: 5 min, 15 min, 1 h, 6 h, 24 h (about 600 points per series).
 - Combined chart, plus small multiples per core/fan with alarm threshold lines (orange outline when firing).
 - Sensor table with current / min / avg / max and visibility toggles.
-- Alarm panel, limited to the selected tab's family (`Alarms: Fans`, ...): the Sensor dropdown offers only that family's sensors plus "Every … (one alarm each)", firing **above** or **below** the threshold with the family's suggestion pre-filled (above 75 °C, above 4500 RPM, below 20 %); the alarm list (enable/disable, delete, live state) and the event log show only that family, with a note counting alarms of other families.
+- Alarm panel, limited to the selected tab's family (`Alarms: Fans`, ...): the Sensor dropdown offers only that family's sensors plus "Every … (one alarm each)", firing **above** or **below** the threshold with the family's suggestion pre-filled (above 75 °C, above 4500 RPM, below 20 %); inputs are validated as typed (window 1–100 min; threshold −50–100 °C, 0–5000 RPM or 0–100 %), invalid entries are outlined in orange with a message and **Add alarm** stays disabled; the alarm list (enable/disable, delete, live state) and the event log show only that family, with a note counting alarms of other families.
 - Browser tab title: `System Sensors`, the same as the page heading.
 
 Source files: `App.jsx` (layout), `live.js` (stream + bucketing), `TempChart.jsx`, `AlarmPanel.jsx`, `units.js` (formats per unit/category), `api.js` (REST calls).

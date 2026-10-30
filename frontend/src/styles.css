@@ -142,8 +142,9 @@ button {
 button:hover { border-color: var(--bracket); }
 button.active { background: var(--slate-active); color: #fff; border-color: #6b7380; }
 button:disabled { opacity: .45; cursor: default; }
+/* Keyboard focus is light grey, so orange keeps meaning "attention" (e.g. an invalid entry). */
 button:focus-visible, select:focus-visible, input:focus-visible {
-  outline: 2px solid var(--signal); outline-offset: 2px;
+  outline: 2px solid #c9c5bf; outline-offset: 2px;
 }
 .alarm-form button[type='submit'] {
   background: var(--ember); border-color: var(--ember); color: #fff; padding: 10px 16px;
@@ -205,6 +206,8 @@ td code { font: 13px var(--mono); }
 }
 .alarm-form input { width: 120px; }
 .alarm-form .hint { flex-basis: 100%; margin: 0; font-family: var(--mono); }
+.alarm-form input.invalid { border-color: var(--signal); }
+.alarm-form .form-error { color: var(--signal-text); }
 .alarm-form .hint::before {
   content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 8px; background: var(--signal);
 }

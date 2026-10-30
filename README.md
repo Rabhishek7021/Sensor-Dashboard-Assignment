@@ -246,7 +246,7 @@ src/pipeline/            library sd_pipeline: the threads around the bus
 src/common/              library sd_common: db.* (SQLite), alarm_logic.hpp, alarm_window.hpp
 src/server/              main.cpp (HTTP, SSE, static files), alarm_engine.*, live_cache.hpp
 src/poller/main.cpp      headless sampler (same pipeline, no HTTP)
-tests/test_main.cpp      19 test groups, see Testing
+tests/test_main.cpp      20 test groups, see Testing
 frontend/src/            App.jsx · live.js (stream + buckets) · TempChart.jsx · AlarmPanel.jsx · units.js · api.js
 scripts/                 setup_env.sh (environment check / install) · run_all.sh · fake_hwmon.sh · clean.sh · doxygen-md-filter.sh
 Doxyfile                 Doxygen configuration (code documentation → docs/html)
@@ -460,13 +460,13 @@ Pipeline metrics: bus subscribers (queued, received, dropped), sampler (ticks, r
 
 ### Alarms
 
-| Method   | Path                | Body / query                                        | Result                              |
-| -------- | ------------------- | --------------------------------------------------- | ----------------------------------- |
-| `GET`    | `/api/alarms`       | `?sensor_id=` optional                              | List with current state             |
-| `POST`   | `/api/alarms`       | see below                                           | `201 {"created": [...]}`            |
-| `PATCH`  | `/api/alarms/{id}`  | any of `func`, `window_min`, `threshold`, `enabled` | Updated alarm                       |
-| `DELETE` | `/api/alarms/{id}`  |                                                     | `204` (events cascade)              |
-| `GET`    | `/api/alarm-events` | `?limit=50&alarm_id=`                               | Fired/cleared history, newest first |
+| Method   | Path                | Body / query                                              | Result                              |
+| -------- | ------------------- | --------------------------------------------------------- | ----------------------------------- |
+| `GET`    | `/api/alarms`       | `?sensor_id=` optional                                    | List with current state             |
+| `POST`   | `/api/alarms`       | see below                                                 | `201 {"created": [...]}`            |
+| `PATCH`  | `/api/alarms/{id}`  | any of `func`, `window_min`, `threshold`, `op`, `enabled` | Updated alarm                       |
+| `DELETE` | `/api/alarms/{id}`  |                                                           | `204` (events cascade)              |
+| `GET`    | `/api/alarm-events` | `?limit=50&alarm_id=`                                     | Fired/cleared history, newest first |
 
 Create one alarm for one sensor (the threshold is in that sensor's unit):
 
@@ -486,6 +486,16 @@ Create the same rule for several sensors at once. This yields **one independent 
 -d '{"sensor_ids": [2,3,4], "func": "max", "window_min": 5, "threshold": 90}'
 -d '{"sensor_ids": "all",   "func": "stddev", "window_min": 10, "threshold": 4}'
 ```
+
+**Input limits.** New and edited alarms are checked against these limits. Anything outside them is rejected with `400` and an `{"error": ...}` message naming the field (for a threshold, also the sensor and the accepted range). The dashboard's alarm form applies the same limits as you type.
+
+| Field        | Accepted                                                                                  |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| `window_min` | Whole minutes, 1 to 100                                                                   |
+| `threshold`  | A number in the sensor's unit: −50 to 100 °C, 0 to 5000 RPM, 0 to 100 % (bounds included) |
+| `func`, `op` | `avg` / `max` / `min` / `stddev`; `>` / `<`                                               |
+
+With several target sensors, the threshold must suit every one of them, otherwise nothing is created (`"all"` with `4500` fails on the cores). The limits are defined once in `src/common/alarm_logic.hpp` and mirrored in `frontend/src/units.js`.
 
 Alarm object:
 
@@ -520,7 +530,7 @@ Alarm object:
 - **Header:** the Armory logo (`frontend/src/assets/logo.webp`, a web-sized copy of `frontend/assets/Armory-Logo-Metal.png`), one tag per sensor family found (for example `10 cores`, `2 fans`, `1 battery`), the live marker and the time of the latest sample. All times on the page use the 24-hour clock.
 - **Alert strip:** shown under the header only while alarms fire, on every tab: the number of firing alarms and up to four of them (sensor and condition, for example `Core 27 avg(last 10 min) > 60`), then `and N more`.
 - **Look:** dark dot-textured page, dark panels with corner brackets (charts, tables and the alarm form on the same dark surface, chart lines in light colours), square controls, IBM Plex Mono for headings, tabs and readings and IBM Plex Sans for text. Orange is used only for what needs attention (firing alarms, the live marker, the primary button); chart lines use twelve non-orange colours so an orange line always means a threshold that is firing. Styles live in `frontend/src/styles.css`.
-- **Alarm panel (per family):** titled after the selected tab (`Alarms: CPU temperatures`, `Alarms: Fans`, `Alarms: Battery`) and limited to that family. The **Sensor** dropdown lists only that family's sensors plus "Every core / fan / battery (one alarm each)"; the form starts with that family's suggested comparison and threshold (above 75 °C, above 4500 RPM, below 20 %) and the threshold label shows its unit. The alarm table (live state and aggregate, enable/disable, delete) and the fired/cleared event log (with each condition, `> 75`, `< 20`) show only that family's alarms; a note says how many alarms belong to other families.
+- **Alarm panel (per family):** titled after the selected tab (`Alarms: CPU temperatures`, `Alarms: Fans`, `Alarms: Battery`) and limited to that family. The **Sensor** dropdown lists only that family's sensors plus "Every core / fan / battery (one alarm each)"; the form starts with that family's suggested comparison and threshold (above 75 °C, above 4500 RPM, below 20 %) and the labels show the accepted ranges (window 1 to 100 min; threshold −50 to 100 °C, 0 to 5000 RPM or 0 to 100 %). Characters that cannot form a valid number (letters, `e`, a minus sign where the unit has no negative values, more than 2 decimals) are not accepted while typing; an out-of-range or empty entry is outlined in orange, the message under the form says what is allowed, and **Add alarm** stays disabled until every entry is valid. The alarm table (live state and aggregate, enable/disable, delete) and the fired/cleared event log (with each condition, `> 75`, `< 20`) show only that family's alarms; a note says how many alarms belong to other families.
 - **Browser tab title:** `System Sensors`, the same as the page heading.
 - API errors are shown in a dismissible banner, and the UI keeps the last good data.
 
@@ -529,7 +539,7 @@ Alarm object:
 Step-by-step rebuild instructions and a manual check for every feature, with expected results, are in **[TESTING.md](TESTING.md)**.
 
 ```bash
-ctest --test-dir build --output-on-failure     # 19 test groups, 274 checks
+ctest --test-dir build --output-on-failure     # 20 test groups, 285 checks
 ./build/sd-tests --list                        # run one group: ./build/sd-tests fan
 ```
 

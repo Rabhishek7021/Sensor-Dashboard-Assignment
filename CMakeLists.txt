@@ -110,7 +110,7 @@ add_test(NAME unit COMMAND sd-tests)   # everything in one go
 foreach(group cpu_temp_single_socket cpu_temp_multi_socket cpu_temp_fallbacks fan_provider
               battery_provider registry_and_manager custom_provider store_and_aggregates
               migrate_drops_package migrate_adds_category migrate_adds_op alarm_logic
-              alarm_below_threshold alarm_engine_per_core
+              alarm_input_limits alarm_below_threshold alarm_engine_per_core
               bus second_window db_writer sampler follower_and_lock)
   add_test(NAME ${group} COMMAND sd-tests ${group})
 endforeach()

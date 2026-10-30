@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <filesystem>
 #include <fstream>
 #include <atomic>
@@ -377,6 +378,25 @@ static void test_alarm_logic() {
     CHECK(alarm::evaluate("avg", db::Aggregate{}, 100, 1, "<").state == "no_data");  // empty never fires
     CHECK(alarm::is_valid_op(">") && alarm::is_valid_op("<") && !alarm::is_valid_op(">=") && !alarm::is_valid_op(""));
     CHECK(alarm::breached("<", 1, 2) && !alarm::breached("<", 2, 2) && !alarm::breached("=", 1, 2));
+}
+
+/// Input limits for new or edited alarms, shared by the API and the dashboard:
+/// window X from 1 to 100 minutes; threshold Y from -50 to 100 °C, 0 to 5000 RPM
+/// and 0 to 100 %, bounds included; other units accept any finite number.
+static void test_alarm_input_limits() {
+    CHECK(!alarm::is_valid_window(0) && alarm::is_valid_window(1));
+    CHECK(alarm::is_valid_window(100) && !alarm::is_valid_window(101) && !alarm::is_valid_window(-5));
+    CHECK(alarm::is_valid_threshold("celsius", -50) && alarm::is_valid_threshold("celsius", 100));
+    CHECK(!alarm::is_valid_threshold("celsius", -50.1) && !alarm::is_valid_threshold("celsius", 100.5));
+    CHECK(alarm::is_valid_threshold("rpm", 0) && alarm::is_valid_threshold("rpm", 5000));
+    CHECK(!alarm::is_valid_threshold("rpm", -1) && !alarm::is_valid_threshold("rpm", 5001));
+    CHECK(alarm::is_valid_threshold("percent", 0) && alarm::is_valid_threshold("percent", 100));
+    CHECK(!alarm::is_valid_threshold("percent", -0.5) && !alarm::is_valid_threshold("percent", 101));
+    CHECK(alarm::is_valid_threshold("volt", 12000) && !alarm::threshold_range("volt"));  // no limits
+    CHECK(!alarm::is_valid_threshold("volt", std::nan("")) &&
+          !alarm::is_valid_threshold("celsius", std::numeric_limits<double>::infinity()));
+    const auto r = alarm::threshold_range("rpm");
+    CHECK(r && r->min == 0 && r->max == 5000 && std::string(r->suffix) == "RPM");
 }
 
 /// Below-threshold alarms ("<"), the case of a battery running low: the engine
@@ -904,6 +924,7 @@ int main(int argc, char** argv) {
         {"migrate_adds_category", test_migrate_adds_category},
         {"migrate_adds_op", test_migrate_adds_op},
         {"alarm_logic", test_alarm_logic},
+        {"alarm_input_limits", test_alarm_input_limits},
         {"alarm_below_threshold", test_alarm_below_threshold},
         {"alarm_engine_per_core", test_alarm_engine_per_core},
         {"bus", test_bus},
